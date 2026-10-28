@@ -96,9 +96,10 @@ rc=$?
 if [ -s "$out/opengrep.json" ]; then
   total=$(jq '.results | length' "$out/opengrep.json")
   # gate on security rules only; audit rules are low-confidence hints and
-  # correctness/best-practice rules are code quality, both reported, never gating
+  # correctness/best-practice rules are code quality, both reported, never gating.
+  # With --sarif-output, findings suppressed by `# nosemgrep` stay in the JSON with is_ignored=true.
   errs=$(jq '[.results[] | select(.extra.severity == "ERROR" and .extra.metadata.category == "security"
-    and (.check_id | contains(".audit.") | not))] | length' "$out/opengrep.json")
+    and (.check_id | contains(".audit.") | not) and (.extra.is_ignored != true))] | length' "$out/opengrep.json")
   if [ "$errs" -gt 0 ]; then record opengrep "$total" FAIL "$errs security ERROR"; else record opengrep "$total" pass "no security ERROR"; fi
 else
   record opengrep "?" FAIL "error rc=$rc, see opengrep.log"
