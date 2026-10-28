@@ -1,5 +1,6 @@
 # Reusable security scan: Betterleaks (secrets), Trivy fs/config/image, OSV-Scanner,
-# Opengrep (SAST). Fails on secrets and on HIGH/CRITICAL findings, uploads SARIF.
+# Opengrep (SAST). Fails on secrets and on HIGH/CRITICAL findings, uploads SARIF to
+# code scanning and keeps it as an artifact for the DefectDojo import (3.1).
 # Source of truth: flow-84/cyber-security. Published unchanged to the public repo
 # flow-84/security-workflows by scripts/github/publish-workflows.sh, because public
 # repos cannot call reusable workflows that live in a private repo.
@@ -69,6 +70,14 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: bash tools/scripts/github/upload-sarif.sh "$RUNNER_TEMP/scan/sarif"
+
+      - name: Keep SARIF as artifact (DefectDojo import, card 3.1)
+        if: always() && steps.scan.outcome == 'success'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: security-scan-sarif
+          path: ${{ runner.temp }}/scan/sarif/*.sarif
+          if-no-files-found: ignore
 
       - name: Gate (secrets, HIGH, CRITICAL)
         env:
