@@ -9,8 +9,10 @@ dir=${1:?usage: upload-sarif.sh <sarif-dir>}
 for f in "$dir"/*.sarif; do
   [ -s "$f" ] || continue
   name=$(basename "$f" .sarif)
-  sarif=$(jq -c --arg id "security-scan/$name/" '.runs[].automationDetails = {id: $id}' "$f" | gzip -c | base64 | tr -d '\n')
-  if jq -n --arg sha "$GITHUB_SHA" --arg ref "$GITHUB_REF" --arg sarif "$sarif" \
+  # via a file: one argument is capped at 128 KiB on Linux, opengrep SARIF is larger
+  jq -c --arg id "security-scan/$name/" '.runs[].automationDetails = {id: $id}' "$f" \
+    | gzip -c | base64 | tr -d '\n' > "$f.b64"
+  if jq -n --arg sha "$GITHUB_SHA" --arg ref "$GITHUB_REF" --rawfile sarif "$f.b64" \
        '{commit_sha: $sha, ref: $ref, sarif: $sarif, tool_name: "security-scan"}' \
      | gh api -X POST "repos/$GITHUB_REPOSITORY/code-scanning/sarifs" --input - >/dev/null; then
     echo "uploaded $name"

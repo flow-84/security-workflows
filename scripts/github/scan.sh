@@ -9,7 +9,7 @@
 # Writes one SARIF file per tool into <out-dir>/sarif/ plus summary.md and summary.tsv.
 # Exit 1 when a gate fails: any secret, any HIGH/CRITICAL fixable vulnerability or
 # misconfiguration, any OSV advisory with CVSS >= 7, any Opengrep ERROR finding
-# outside the low-confidence audit rules.
+# of a security rule outside the low-confidence audit rules.
 set -uo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 # shellcheck source=tools.env
@@ -95,9 +95,11 @@ opengrep scan "${cfg[@]}" --quiet --exclude node_modules --exclude vendor --excl
 rc=$?
 if [ -s "$out/opengrep.json" ]; then
   total=$(jq '.results | length' "$out/opengrep.json")
-  # audit rules are low-confidence hints: reported, never gating
-  errs=$(jq '[.results[] | select(.extra.severity == "ERROR" and (.check_id | contains(".audit.") | not))] | length' "$out/opengrep.json")
-  if [ "$errs" -gt 0 ]; then record opengrep "$total" FAIL "$errs with severity ERROR"; else record opengrep "$total" pass "no non-audit ERROR"; fi
+  # gate on security rules only; audit rules are low-confidence hints and
+  # correctness/best-practice rules are code quality, both reported, never gating
+  errs=$(jq '[.results[] | select(.extra.severity == "ERROR" and .extra.metadata.category == "security"
+    and (.check_id | contains(".audit.") | not))] | length' "$out/opengrep.json")
+  if [ "$errs" -gt 0 ]; then record opengrep "$total" FAIL "$errs security ERROR"; else record opengrep "$total" pass "no security ERROR"; fi
 else
   record opengrep "?" FAIL "error rc=$rc, see opengrep.log"
 fi
