@@ -1,0 +1,77 @@
+# Reusable security scan: Betterleaks (secrets), Trivy fs/config/image, OSV-Scanner,
+# Opengrep (SAST). Fails on secrets and on HIGH/CRITICAL findings, uploads SARIF.
+# Source of truth: flow-84/cyber-security. Published unchanged to the public repo
+# flow-84/security-workflows by scripts/github/publish-workflows.sh, because public
+# repos cannot call reusable workflows that live in a private repo.
+# Caller template: scripts/github/caller.yml
+# The direct triggers scan the hosting repo itself (cyber-security, and the mirror,
+# where workflow_dispatch on a throwaway branch is the planted-secret test).
+name: security-scan
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      scan-images:
+        description: Build every Dockerfile and scan the image with Trivy
+        type: boolean
+        default: true
+
+permissions: {}
+
+jobs:
+  scan:
+    name: security-scan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: target
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Check out scanner scripts
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: flow-84/security-workflows
+          ref: main
+          path: tools
+          persist-credentials: false
+
+      - name: Install scanners (pinned versions, verified checksums)
+        run: |
+          bash tools/scripts/github/install-tools.sh "$RUNNER_TEMP/bin"
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+
+      - name: Scan
+        id: scan
+        env:
+          SCAN_IMAGES: ${{ inputs.scan-images == false && '0' || '1' }}
+          SCAN_CACHE: ${{ runner.temp }}/cache
+        run: |
+          set +e
+          bash tools/scripts/github/scan.sh target "$RUNNER_TEMP/scan"
+          echo "rc=$?" >> "$GITHUB_OUTPUT"
+          cat "$RUNNER_TEMP/scan/summary.md" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload SARIF to code scanning
+        if: always() && steps.scan.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash tools/scripts/github/upload-sarif.sh "$RUNNER_TEMP/scan/sarif"
+
+      - name: Gate (secrets, HIGH, CRITICAL)
+        env:
+          RC: ${{ steps.scan.outputs.rc }}
+        run: |
+          if [ "$RC" != 0 ]; then echo "::error::security-scan gate failed, see job summary"; exit 1; fi
