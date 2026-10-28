@@ -7,6 +7,10 @@ here=$(cd "$(dirname "$0")" && pwd)
 . "$here/tools.env"
 bin=${1:?usage: install-tools.sh <bin-dir>}
 mkdir -p "$bin"
+stamp=$(shasum -a 256 "$here/tools.env" | cut -d' ' -f1)
+if [ "$(cat "$bin/.tools.env.sha256" 2>/dev/null)" = "$stamp" ]; then
+  echo "scanners in $bin already match tools.env"; exit 0
+fi
 work=$(mktemp -d); trap 'rm -rf "$work"' EXIT
 
 case "$(uname -s)-$(uname -m)" in
@@ -33,4 +37,5 @@ tar -xzf "$work/bl.tgz" -C "$work" betterleaks && install -m 0755 "$work/betterl
 fetch "https://github.com/opengrep/opengrep/releases/download/v${OPENGREP_VERSION}/opengrep_${og_os}" "$(sha OPENGREP)" "$work/opengrep"
 install -m 0755 "$work/opengrep" "$bin/opengrep"
 
+echo "$stamp" > "$bin/.tools.env.sha256"
 echo "installed trivy $TRIVY_VERSION, osv-scanner $OSV_VERSION, betterleaks $BETTERLEAKS_VERSION, opengrep $OPENGREP_VERSION to $bin"
