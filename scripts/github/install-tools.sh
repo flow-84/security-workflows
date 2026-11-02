@@ -37,5 +37,8 @@ tar -xzf "$work/bl.tgz" -C "$work" betterleaks && install -m 0755 "$work/betterl
 fetch "https://github.com/opengrep/opengrep/releases/download/v${OPENGREP_VERSION}/opengrep_${og_os}" "$(sha OPENGREP)" "$work/opengrep"
 install -m 0755 "$work/opengrep" "$bin/opengrep"
 
+fetch "https://github.com/anchore/syft/releases/download/v${SYFT_VERSION}/syft_${SYFT_VERSION}_${plat}.tar.gz" "$(sha SYFT)" "$work/syft.tgz"
+tar -xzf "$work/syft.tgz" -C "$work" syft && install -m 0755 "$work/syft" "$bin/syft"
+
 echo "$stamp" > "$bin/.tools.env.sha256"
-echo "installed trivy $TRIVY_VERSION, osv-scanner $OSV_VERSION, betterleaks $BETTERLEAKS_VERSION, opengrep $OPENGREP_VERSION to $bin"
+echo "installed trivy $TRIVY_VERSION, osv-scanner $OSV_VERSION, betterleaks $BETTERLEAKS_VERSION, opengrep $OPENGREP_VERSION, syft $SYFT_VERSION to $bin"
