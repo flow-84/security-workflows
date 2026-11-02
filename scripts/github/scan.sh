@@ -29,6 +29,15 @@ record() { # tool findings gate(pass|FAIL|skip) note
   return 0
 }
 
+# --- Syft: CycloneDX SBOM of the repo (Dependency-Track, card 3.4); never gates ---
+mkdir -p "$out/sbom"
+if syft "dir:." -q --exclude './**/node_modules/**' --exclude './.git/**' \
+     -o "cyclonedx-json=$out/sbom/sbom.cdx.json" >"$out/syft.log" 2>&1; then
+  record syft "$(jq '.components | length' "$out/sbom/sbom.cdx.json" 2>/dev/null || echo "?")" pass "SBOM components"
+else
+  record syft "?" skip "error, see syft.log"
+fi
+
 # --- Betterleaks: full history when available, working tree otherwise ------------
 if [ "$(git rev-parse --is-shallow-repository 2>/dev/null)" = false ]; then mode=git; else mode=dir; fi
 betterleaks "$mode" . --no-banner --redact --exit-code 3 \
