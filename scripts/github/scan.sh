@@ -102,6 +102,23 @@ cfg=(); for d in $OPENGREP_RULE_DIRS; do [ -d "$rules/$d" ] && cfg+=(--config "$
 opengrep scan "${cfg[@]}" --quiet --exclude node_modules --exclude vendor --exclude dist \
   --sarif-output "$out/sarif/opengrep.sarif" --json-output "$out/opengrep.json" . >"$out/opengrep.log" 2>&1
 rc=$?
+# Rules with documented noise (tools.env, scans/README.md): excluded ones dropped, MEDIUM ones
+# lowered to warning (DefectDojo: Medium), so neither reaches the gate.
+# shellcheck disable=SC2086 # the lists are split on purpose
+og_lists=(--argjson drop "$(jq -nc '$ARGS.positional' --args ${OPENGREP_EXCLUDE_RULES:-})"
+          --argjson low "$(jq -nc '$ARGS.positional' --args ${OPENGREP_MEDIUM_RULES:-})")
+og_hit='def hit($l): . as $id | any($l[]; . as $r | $id == $r or ($id | endswith("." + $r)));'
+if [ -s "$out/opengrep.json" ]; then
+  jq "${og_lists[@]}" "$og_hit"' .results |= map(select(.check_id | hit($drop) | not)
+    | if (.check_id | hit($low)) then .extra.severity = "WARNING" else . end)' \
+    "$out/opengrep.json" > "$out/opengrep.json.tmp" && mv "$out/opengrep.json.tmp" "$out/opengrep.json"
+fi
+if [ -s "$out/sarif/opengrep.sarif" ]; then
+  jq "${og_lists[@]}" "$og_hit"' .runs[]? |= (.results |= ((. // []) | map(select(.ruleId | hit($drop) | not)
+      | if (.ruleId | hit($low)) then .level = "warning" else . end))
+    | .tool.driver.rules |= (if . then map(if (.id | hit($low)) then .defaultConfiguration.level = "warning" else . end) else . end))' \
+    "$out/sarif/opengrep.sarif" > "$out/sarif/opengrep.sarif.tmp" && mv "$out/sarif/opengrep.sarif.tmp" "$out/sarif/opengrep.sarif"
+fi
 if [ -s "$out/opengrep.json" ]; then
   total=$(jq '.results | length' "$out/opengrep.json")
   # gate on security rules only; audit rules are low-confidence hints and
