@@ -6,6 +6,8 @@
 # Usage: scan.sh <target-dir> <out-dir>
 # Env:   SCAN_IMAGES=1|0   build + scan Dockerfiles (default 1)
 #        SCAN_CACHE=<dir>  cache for the opengrep rules (default ~/.cache/security-scan)
+#        TRIVY_SERVER, TRIVY_SERVER_TOKEN  Trivy client mode (default: read from TRIVY_ENV_FILE,
+#                          ~/.local/state/cyber-security/containers/.env; absent = local DB)
 # Writes one SARIF file per tool into <out-dir>/sarif/ plus summary.md and summary.tsv.
 # Exit 1 when a gate fails: any secret, any HIGH/CRITICAL fixable vulnerability or
 # misconfiguration, any OSV advisory with CVSS >= 7, any Opengrep ERROR finding
@@ -45,6 +47,21 @@ betterleaks "$mode" . --no-banner --redact --exit-code 3 \
 rc=$?
 n=$(sarif_count "$out/sarif/betterleaks.sarif")
 case $rc in 0) record betterleaks "$n" pass "$mode" ;; 3) record betterleaks "$n" FAIL "$mode" ;; *) record betterleaks "?" FAIL "error rc=$rc, see betterleaks.log" ;; esac
+
+# --- Trivy client mode on the MacBook: the vuln DB (1.6 GB) stays on sec-hub (MS-3070) ---------
+# TRIVY_SERVER/TRIVY_SERVER_TOKEN from the env, else from the .env that
+# scans/containers/install-secrets.sh macbook writes. Trivy reads TRIVY_SERVER as --server.
+# Without a server (GitHub Actions) Trivy keeps its local DB.
+trivy_env=${TRIVY_ENV_FILE:-$HOME/.local/state/cyber-security/containers/.env}
+if [ -z "${TRIVY_SERVER:-}" ] && [ -r "$trivy_env" ]; then
+  TRIVY_SERVER=$(sed -n 's/^TRIVY_SERVER=//p' "$trivy_env" | tail -1)
+  TRIVY_SERVER_TOKEN=$(sed -n 's/^TRIVY_SERVER_TOKEN=//p' "$trivy_env" | tail -1)
+fi
+if [ -n "${TRIVY_SERVER:-}" ]; then
+  export TRIVY_SERVER TRIVY_TOKEN="${TRIVY_SERVER_TOKEN:-${TRIVY_TOKEN:-}}" TRIVY_TOKEN_HEADER=Trivy-Token
+else
+  unset TRIVY_SERVER
+fi
 
 # --- Trivy fs: dependency vulnerabilities and IaC/config misconfigurations --------
 trivy fs . --quiet --scanners vuln,misconfig --severity HIGH,CRITICAL --ignore-unfixed \
