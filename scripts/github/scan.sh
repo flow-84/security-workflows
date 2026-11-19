@@ -9,6 +9,7 @@
 #        TRIVY_SERVER, TRIVY_SERVER_TOKEN  Trivy client mode (default: read from TRIVY_ENV_FILE,
 #                          ~/.local/state/cyber-security/containers/.env; absent = local DB)
 # Writes one SARIF file per tool into <out-dir>/sarif/ plus summary.md and summary.tsv.
+# Exit 75 when the memory brake or the scan lock of the MacBook gave up (scan-lock.sh, alarm sent).
 # Exit 1 when a gate fails: any secret, any HIGH/CRITICAL fixable vulnerability or
 # misconfiguration, any OSV advisory with CVSS >= 7, any Opengrep ERROR finding
 # of a security rule outside the low-confidence audit rules.
@@ -19,6 +20,10 @@ here=$(cd "$(dirname "$0")" && pwd)
 target=$(cd "${1:?usage: scan.sh <target-dir> <out-dir>}" && pwd)
 out=${2:?usage: scan.sh <target-dir> <out-dir>}
 mkdir -p "$out/sarif"; out=$(cd "$out" && pwd)
+# On the MacBook one scan at a time and only with enough free memory (MS-4030, scan-lock.sh).
+# shellcheck source=scan-lock.sh
+. "$here/scan-lock.sh"
+scan_guard "scan.sh ${target##*/}" || exit $?
 cache=${SCAN_CACHE:-$HOME/.cache/security-scan}
 failed=0
 cd "$target"  # relative paths in every report (needed for SARIF upload)
