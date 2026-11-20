@@ -11,9 +11,12 @@
 # pid, start time and name inside. A second scan waits until the holder is done; a holder whose
 # pid is gone (or reused by another process) is stale and its lock is taken over.
 # Memory brake, checked with the lock held: free memory below SCAN_MEM_MIN_FREE_PCT (20, as
-# memory_pressure reports it) or swap above SCAN_SWAP_MAX_MB (4096) -> wait up to SCAN_MEM_WAIT
-# seconds (900), then give up and report to the alarm intake (alarm-digest.py melden cyber-security
-# scan-gebremst). Without a readable value the brake does not hold the scan.
+# memory_pressure reports it) -> wait up to SCAN_MEM_WAIT seconds (900), then give up and report to
+# the alarm intake (alarm-digest.py melden cyber-security scan-gebremst). Without a readable value
+# the brake does not hold the scan. Swap is only logged, never a reason to wait: macOS keeps swap
+# files allocated until reboot, so after days of uptime the used swap stays above any fixed limit
+# while memory is free (MS-4099, 20.11.2026: 12 days up, swap 4.9-5.2 GB at 33-38 % free, every
+# rescan braked). Disk room for swap is guarded by mac-disk.sh.
 # Outside macOS (GitHub Actions, sec-hub with its own /run/sec-scan.lock) a no-op, unless
 # SCAN_LOCK_FORCE=1 (tests). SCAN_LOCK=0 switches both off.
 # Env: SCAN_LOCK_WAIT (s, 10800), SCAN_LOCK_POLL (s, 10), SCAN_MEM_POLL (s, 30),
@@ -70,8 +73,6 @@ _scan_mem_tight() {
   free="$(_scan_mem_free_pct)"; swap="$(_scan_swap_used_mb)"
   if [ -n "$free" ] && [ "$free" -lt "${SCAN_MEM_MIN_FREE_PCT:-20}" ]; then
     echo "free=${free}% (min ${SCAN_MEM_MIN_FREE_PCT:-20}%) swap=${swap:-?}MB"
-  elif [ -n "$swap" ] && [ "$swap" -gt "${SCAN_SWAP_MAX_MB:-4096}" ]; then
-    echo "free=${free:-?}% swap=${swap}MB (max ${SCAN_SWAP_MAX_MB:-4096}MB)"
   fi
 }
 
